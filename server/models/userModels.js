@@ -12,16 +12,14 @@ const userSchema = new mongoose.Schema({
         select : false,
     },
     phone: String,
-    
     accountVerified: {type: Boolean,default: false},
-
     verificationCode: Number,
     verificationCodeExpire: Date,
     resetPasswordToken: String,
     resetPasswordTokenExpired:Date,
     createdAt:{
         type: Date,
-        default: Date.now,
+        default: Date.now   ,
     },
 
 });
@@ -60,23 +58,25 @@ userSchema.methods.generateVerificationCode=function (){
     this.verificationCodeExpire=Date.now()+(5*60*1000);
     
     return verificationCode;
-}
+};
 
 userSchema.methods.generateToken= async function(){
     return await jwt.sign({id: this.id},process.env.JWT_SUPER_KEY,{
         expiresIn:process.env.JWT_EXPIRE
     }); 
-}
+};
 
-UserSchema.methods.generateResetPasswordToken= async function(){
-    const resetToken= crypto.randomBytes(20).toString("hex");
+userSchema.methods.generateResetPasswordToken= async function(){
+    const resetToken= crypto.randomBytes(20).toString("hex");//generating the resetpassword link
+    console.log(resetToken);
 
-    this.resetPasswordToken= crypto
+    this.resetPasswordToken= crypto //storing the hashed password link for security
     .createHash("sha256")
     .update(resetToken)
     .digest("hex");
 
-    this.resetPasswordExpire=Date.now()*1000*15*50;
+    this.resetPasswordTokenExpired=Date.now()+1000*15*60;
+    return resetToken;
 }
 export const User = mongoose.model('User', userSchema);
 

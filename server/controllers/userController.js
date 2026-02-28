@@ -4,6 +4,7 @@ import {User} from "../models/userModels.js" ;
 import {sendEmail} from "../utils/sendEmail.js"
 import twilio from "twilio";
 import { sendToken } from "../utils/sendToken.js";
+import crypto  from "crypto";
 
 const client=twilio("ACbdb4f5a0ce098e7479a470234b5d00ec","2ec14748947e68a4c46f4b074896d7a3");
 
@@ -47,7 +48,7 @@ export const register=catchAsyncError(async (req,res,next)=>{
             ]
         });
 
-        if(registrationAttemptsByUser.length>10){
+        if(registrationAttemptsByUser.length>3){
             return  next(new ErrorHandler("You have reached the maximim no of attempts(3).Please try after an hour.",400));
         }
         //------------------------------
@@ -75,7 +76,7 @@ async function sendVerificationCode(verificationMethod,verificationCode,name,ema
         console.log("TOKEN:", process.env.TWILIO_AUTH_TOKEN);
         if(verificationMethod==="email"){
             const message=generateEmailTemplate(verificationCode);
-            sendEmail({email,subject: "Your verification code",message});
+            await sendEmail({email,subject: "Your verification code",message});
             res.status(200).json({
                 success: "true",
                 message: `Verification code sent successfully to ${name}`
@@ -226,6 +227,15 @@ export const login=catchAsyncError(async (req,res,next)=>{
     sendToken(user,200,"User logged in successfully",res);
 });
 
+//---------------------------------------------how to get the user
+export const getUser=catchAsyncError(async(req,res,next)=>{
+    const user=req.user;
+    res.status(200).json({
+        success:true,
+        user,
+    }) ;
+});
+
 //-------------------to be able to logout this function is being created and have the isauth middleware to be able to check if the user
 //is authenticated(using json web token) -------------------------------------------
 export const logout= catchAsyncError(async(req,res,next)=>{
@@ -238,51 +248,71 @@ export const logout= catchAsyncError(async(req,res,next)=>{
     })
 });
 
-export const getUser=catchAsyncError(async(req,res,next)=>{
-    const user=req.user;
-    res.status(200).json({
-        success:true,
-        user,
-    }) ;
-});
+
 /*---------------from here on i am trying to implement the forgot password --------------------------------*/
 export const forgotPassword=catchAsyncError(async(req,res,next)=>{
-    const user=User.findOne({
+    //we modified the req body by the isAuthenticated fun in the auth middlewares
+    const user=await User.findOne({
         email:  req.body.email,
         accountVerified:true
     });
     if(!user){
         return next(new ErrorHandler("User not Found",404));
     }
-    const resetToken=user.generateResetPasswordToken();
-    await user.save({validateBeforeSave: false});/*to save the password token and the expire time */
+    const resetToken=await user.generateResetPasswordToken();
+    await user.save({validateBeforeSave: false});/*as we do not need to validate the thing that i have not mo   dified */
     const resetPasswordUrl= `${process.env.FRONTEND_URL}/password/reset/${resetToken}`;
 
     const message=  `Your reset password token is: \n\n ${resetPasswordUrl } \n\n.
     If you did not requested for it then ignore this`;
-
+    console.log("my email is equal to: "+user.email);
     try{
-        sendEmail({email: this.email,
+        await sendEmail({
+            email: user.email,
             subject: "MERN_Authentication_reset Password",
             message,
         });
         res.status(200).json({
             success: true,
-            message: `resent password sent to ${user.email} successfully. `
+            message: `Resent password email sent to ${user.email} successfully. `
         });
 
-    }catch(error){
-         user.generateResetPasswordToken=undefined;
-         user.resetPasswordExpire=undefined;
-         await user.save({validateBeforeSave:false});
-         return next(new ErrorHandler(error.message? error.message: "Cannot setResetTokenPassoword",500));
-    }
-});
+        }catch(error){
+            user.resetPasswordToken=undefined;
+            user.resetPasswordTokenExpired=undefined;
+            await user.save({validateBeforeSave:false});
+            return next(new ErrorHandler(error.message? "hello bruh": "Cannot setResetTokenPassoword",500));
+        }
+    });
 
 /*------------------to reset the password we will need to send the token also along with url------------------------------------------------ */
 export const resetPassword= catchAsyncError(async(req,res,next)=>{
 
-})
+    const {token}=req.params//???? but we only saved the hashed password not the original token
+    //how are we able to send the token that we have never ever saved-------------------------------------------?????
+    console.log(token);
+    const resetPasswordToken=crypto
+        .createHash("sha256")
+    .update(token)
+    .digest("hex");
+    console.log(resetPasswordToken);
+    const user= await User.findOne({
+        resetPasswordToken,
+        resetPasswordTokenExpired: {$gt: Date.now()},
+    });
+    if(!user){
+        return next(new ErrorHandler("either the token no correct or has expired",400));
+    }
+    if(req.body.password!==req.body.confirmPassword){
+        return next(new ErrorHandler("the Password and Confirm Password do not match",400));
+    }
+    user.password=  req.body.password;
+    user.resetPasswordToken=undefined;
+    user.resetPasswordTokenExpired=undefined;
+    await user.save();
+    sendToken(user,200,"Reset password successfully",res);
+
+});
 
 
 

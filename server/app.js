@@ -5,6 +5,7 @@ import cors from "cors";
 import {connection} from "./database/dbConnections.js"
 import {errorMiddleware} from "./middlewares/error.js"
 import userRouter from "./routes/userRouter.js";
+import { removeUnverifiedAccounts } from "./automation/removeUnverifiedAccounts.js";
 
 export const app=express();
 
@@ -24,7 +25,7 @@ app.use(express.urlencoded({extended: true}));//to get the data that is encoded 
 app.use("/api/v1/user",userRouter);
 
 
-
+removeUnverifiedAccounts();
 connection();
 
 app.use(errorMiddleware);
